@@ -272,7 +272,6 @@ cloudflare-bypass-2026/
 ├── install_linux.sh       # Linux 一键安装脚本
 ├── requirements.txt       # Python 依赖清单
 ├── proxy.txt              # 代理列表
-├── swiftproxy-banner.png  # 推荐代理广告图
 ├── output/                # Cookie 输出目录
 └── README.md
 ```
@@ -292,7 +291,7 @@ cloudflare-bypass-2026/
 > 运行 `sudo bash install_linux.sh` 安装 Xvfb 等依赖。
 
 **Q: 代理不工作?**
-> 大部分公共代理不支持 HTTPS 隧道。建议使用直连模式或购买高质量住宅代理（如 [Swiftproxy](https://www.swiftproxy.net/?ref=cloudflarebypass)）。
+> 大部分公共代理不支持 HTTPS 隧道。建议使用直连模式或购买高质量住宅代理。
 
 **Q: curl_cffi 方案为什么不能用于 Turnstile?**
 > Turnstile 需要在浏览器环境执行 JavaScript 并进行 Web API 探测（navigator、webgl、canvas 等），纯 HTTP 客户端无法完成这些操作。详见本文「方案对比」章节。
@@ -310,30 +309,17 @@ cloudflare-bypass-2026/
 
 ---
 
-## 推荐代理 / Sponsored Proxy
+## 商务合作 / Business
 
-<a href="https://www.swiftproxy.net/?ref=cloudflarebypass">
-  <img src="swiftproxy-banner.png" alt="Swiftproxy - 全球住宅代理" width="100%" />
-</a>
+欢迎代理商、企业、开发者洽谈赞助展示、定制开发、技术咨询等合作。
 
-### Swiftproxy — 全球住宅代理服务平台
-
-| 特性 | 详情 |
+| 渠道 | 联系方式 |
 |:---|:---|
-| 代理池规模 | **8000 万+** 高质量住宅 IP |
-| 覆盖范围 | **190+** 国家和地区 |
-| 支持协议 | HTTP / HTTPS / SOCKS5 |
-| 轮换方式 | 动态轮换 + 会话保持 |
-| 流量有效期 | 永不过期 |
-| 免费测试 | 提供 |
+| 微信 | `1837620622`（传康Kk） |
+| 邮箱 | `2040168455@qq.com` |
+| 闲鱼 / B站 | 万能程序员 |
 
-真实住宅 IP 保障稳定连接，有效提升数据采集、自动化访问、AI 工作流及大规模网络任务的成功率。
-
-<p align="center">
-  <a href="https://www.swiftproxy.net/?ref=cloudflarebypass">
-    <b>👉 立即获取免费测试</b>
-  </a>
-</p>
+合作说明：赞助位档期、定制需求、批量技术支持等，请优先微信联系并备注「商务合作」。
 
 ---
 
