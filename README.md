@@ -10,44 +10,66 @@ A multi-technique Cloudflare Turnstile bypass toolkit
 
 ## 免责声明 / Disclaimer
 
-本工具仅供学习研究使用，请遵守相关法律法规和目标网站的服务条款。
+本工具仅供学习研究与**已授权**的自动化测试使用，请遵守相关法律法规和目标网站服务条款。
 
-This tool is for educational purposes only. Please comply with applicable laws and website terms of service.
+不承诺任何站点、任何环境下的成功率；机房 IP、真 headless、Docker 无显示环境会显著降低通过率。
 
-## 方案对比与可行性分析 / Comparison & Viability
+This tool is for educational and authorized testing only. No success-rate guarantees.
 
-本仓库提供 **4 种不同技术方案**，针对 Cloudflare Turnstile 的可行性和适用场景如下：
+## 2026 技术现状（摘要）
 
-| # | 文件 | 方案 | 原理 | Turnstile 可行 | 适用场景 |
-|:---:|:---|:---|:---|:---:|:---|
-| 1 | `bypass.py` | SeleniumBase UC Mode | OS 级鼠标模拟 + Chrome | ✅ 最高 | **主力推荐**，Turnstile Managed/Interactive |
-| 2 | `simple_bypass.py` | SeleniumBase + 并行 | 多浏览器并发 + 代理轮换 | ✅ 高 | 批量采集、大规模任务 |
-| 3 | `bypass_nodriver.py` | CDP 直连 | 无 WebDriver，CDP 协议直控 | ✅ 高 | SeleniumBase 替代方案，`cf_verify()` 自动处理 |
-| 4 | `bypass_curl_cffi.py` | TLS 指纹仿冒 | HTTP 层 JA3/JA4 指纹修改 | ❌ 不可用 | **仅限旧版 JS Challenge**，无法用于 Turnstile |
+| 层级 | 检测信号 | 开源应对 |
+|:---|:---|:---|
+| 网络 | IP 信誉 / ASN / 住宅 vs 机房 | 住宅代理或家庭宽带 |
+| TLS/HTTP2 | JA3/JA4 等 | `curl_cffi` 可仿，**不足以过 Turnstile** |
+| Challenge / Turnstile | JS、PoW、交互、Web API | **真实浏览器 + 有头 + OS/CDP 交互** |
+| 自动化指纹 | WebDriver / 部分 CDP 特征 | UC 断连重连、纯 CDP（nodriver / SB CDP） |
 
-### curl_cffi 方案的重要限制
+**当前更稳妥的开源组合：** 有头真实 Chrome +（可选）住宅 IP + `uc_open_with_reconnect` / CDP + OS 级点击。
 
-`bypass_curl_cffi.py` **无法绕过 Cloudflare Turnstile**（含 Managed / Non-Interactive / Invisible 三种模式），原因如下：
+**不推荐：** 真 headless 硬刚 Managed Turnstile、纯 `curl_cffi` 打 Turnstile、playwright-stealth 单独指望。
 
-1. **无 JavaScript 执行环境** — Turnstile 必须在浏览器中运行 JS 完成 PoW 计算和 API 探测
-2. **无 DOM / Web API** — Turnstile 检查 `navigator`、`webgl`、`canvas` 等浏览器指纹
-3. **无法交互** — Managed 模式需要用户点击复选框，纯 HTTP 客户端无法完成
-4. TLS 指纹仅为 Turnstile 检测的**众多信号之一**，不是决定性因素
+## 方案对比 / Comparison
 
-该方案仅适用于**旧版 Cloudflare "Under Attack" JS Challenge** 或低防护站点。如需绕过 Turnstile，请使用方案 1、2 或 3。
+本仓库提供 **5 种方案**（4 可跑浏览器/HTTP + 1 类封装）：
+
+| # | 文件 | 方案 | Turnstile | 说明 |
+|:---:|:---|:---|:---:|:---|
+| 1 | `bypass.py` | SeleniumBase **UC Mode** | ✅ | **默认主力**：`uc_open_with_reconnect` + `uc_gui_click_captcha` |
+| 2 | `simple_bypass.py` | UC + 并行/代理轮换 | ✅ | 批量场景；并行时 OS 鼠标可能互抢 |
+| 3 | `bypass_nodriver.py` | nodriver 纯 CDP | ✅ | `verify_cf()`（需 OpenCV）；**AGPL-3.0** |
+| 4 | `bypass_curl_cffi.py` | TLS 指纹 / Cookie 复用 | ❌ | **不能**过 Turnstile；旧 JS Challenge 或复用 cookie |
+| 5 | `bypass_cdp.py` | SeleniumBase **CDP Mode** | ✅ | 2026 UC 后继路径：`solve_captcha` / `gui_click_captcha` |
+| - | `bypass_seleniumbase.py` | UC 类封装详细版 | ✅ | 独立可 import，便于二次开发 |
+
+### 推荐优先级
+
+```
+首选:  bypass.py（UC）或 bypass_cdp.py（CDP）
+并列:  bypass_nodriver.py（纯 CDP，注意 AGPL）
+批量:  simple_bypass.py（注意 GUI 点击互斥）
+加速:  浏览器拿 cf_clearance → curl_cffi 复用（同 UA/同出口 IP）
+放弃:  纯 HTTP 硬刚 Turnstile
+```
+
+### curl_cffi 限制
+
+1. 无 JS 运行时，无法完成 Turnstile / 现代 Challenge  
+2. 无 DOM / Web API 指纹环境  
+3. 无法完成 Managed 模式点击  
+4. TLS 指纹只是检测的一部分  
 
 ## 功能特点 / Features
 
 | 功能 | 说明 |
 |:---|:---|
-| SeleniumBase UC Mode | 操作系统级鼠标模拟，绕过率最高 |
-| nodriver CDP 直连 | 无 WebDriver 依赖，`cf_verify()` 自动点击 |
-| 单浏览器模式 | 简单可靠，资源占用低 |
-| 并行模式 | 多浏览器同时运行，提高效率 |
-| 代理轮换 | 支持从文件批量加载代理 |
-| HTTPS 隧道检测 | 自动验证代理是否支持 HTTPS |
-| 跨平台 | Mac / Windows / Linux |
-| Cookie 保存 | JSON + Netscape 双格式 |
+| SeleniumBase UC Mode | 断连重连 + OS 级点击 |
+| SeleniumBase CDP Mode | 纯 CDP 路径，减少 WebDriver 特征 |
+| nodriver CDP | 无 chromedriver；`verify_cf` 图像点击 |
+| 并行 / 代理轮换 | `simple_bypass.py` |
+| 超时控制 | 主流程支持 timeout |
+| Cookie 导出 | JSON + Netscape |
+| 跨平台 | Mac / Windows / Linux（Linux 需 Xvfb） |
 
 ## 快速开始 / Quick Start
 
@@ -55,13 +77,14 @@ This tool is for educational purposes only. Please comply with applicable laws a
 # 安装依赖
 pip install -r requirements.txt
 
-# 方案1: 基础用法（推荐，绕过率最高）
+# 方案1 UC（推荐）
 python bypass.py https://example.com
+python bypass.py https://example.com -p http://127.0.0.1:7890 -t 90
 
-# 方案1: 使用代理
-python bypass.py https://example.com -p http://127.0.0.1:7890
+# 方案5 CDP（2026）
+python bypass_cdp.py https://example.com
 
-# 方案3: nodriver CDP 直连
+# 方案3 nodriver
 python bypass_nodriver.py https://example.com
 ```
 
@@ -75,237 +98,177 @@ cd cloudflare-bypass-2026
 pip install -r requirements.txt
 ```
 
+需要已安装 **Google Chrome**。
+
 ### Linux (Ubuntu/Debian)
 
 ```bash
-# 方式1: 一键安装
 git clone https://github.com/1837620622/cloudflare-bypass-2026.git
 cd cloudflare-bypass-2026
 sudo bash install_linux.sh
-
-# 方式2: 手动安装
-sudo apt-get update
-sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libgbm1 libasound2
-
-# 安装Chrome
-wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-sudo dpkg -i google-chrome-stable_current_amd64.deb
-sudo apt-get install -f -y
-
-# Python依赖
-pip install seleniumbase pyvirtualdisplay
+# 或:
+# sudo apt-get install -y xvfb ...
+# python3 -m pip install -r requirements.txt
 ```
+
+> Chrome 官方 deb 主要为 **amd64**。ARM 请自备 Chromium/Chrome。
 
 ## 使用方法 / Usage
 
-### 1. 简单模式 (bypass.py) —— 主力推荐，绕过率最高
-
-单浏览器，SeleniumBase UC Mode，最简单可靠：
+### 1. UC 单浏览器 `bypass.py`（推荐）
 
 ```bash
-# 直连
 python bypass.py https://example.com
-
-# 使用代理
 python bypass.py https://example.com -p http://127.0.0.1:7890
-
-# 设置超时
-python bypass.py https://example.com -t 60
+python bypass.py https://example.com -t 90 --incognito
 ```
 
-**参数：**
-
-| 参数 | 说明 | 默认值 |
+| 参数 | 说明 | 默认 |
 |:---|:---|:---:|
-| `url` | 目标URL | 必填 |
-| `-p, --proxy` | 代理地址 | 无 |
-| `-t, --timeout` | 超时(秒) | 60 |
-| `--no-save` | 不保存Cookie | 否 |
+| `url` | 目标 URL | 必填 |
+| `-p, --proxy` | 代理 | 无 |
+| `-t, --timeout` | 总超时（秒） | 60 |
+| `-r, --reconnect` | 断连秒数 | 5 |
+| `--incognito` | 无痕 | 否 |
+| `--no-save` | 不存 Cookie | 否 |
 
-### 2. 完整模式 (simple_bypass.py) —— 并行 + 代理轮换
-
-支持并行浏览器和代理批量轮换：
+### 2. 并行 / 代理轮换 `simple_bypass.py`
 
 ```bash
-# 直连模式
 python simple_bypass.py https://example.com
-
-# 指定代理
-python simple_bypass.py https://example.com -p http://127.0.0.1:7890
-
-# 代理轮换模式（顺序尝试proxy.txt中的代理）
-python simple_bypass.py https://example.com -r -f proxy.txt
-
-# 并行模式（3个浏览器同时运行）
-python simple_bypass.py https://example.com -P -b 3 -t 60
-
-# 并行 + 代理检测 + 30批次
-python simple_bypass.py https://example.com -P -c -b 3 -t 15 -n 30 -f proxy.txt
+python simple_bypass.py https://example.com -r -f proxy.txt -c
+python simple_bypass.py https://example.com -P -b 3 -t 30 -n 5 -c
 ```
 
-**参数：**
-
-| 参数 | 说明 | 默认值 |
+| 参数 | 说明 | 默认 |
 |:---|:---|:---:|
-| `url` | 目标URL | 必填 |
-| `-p, --proxy` | 指定代理地址 | 无 |
-| `-f, --proxy-file` | 代理文件路径 | proxy.txt |
-| `-r, --rotate` | 顺序代理轮换模式 | 否 |
-| `-P, --parallel` | 并行模式 | 否 |
-| `-b, --batch` | 并行浏览器数量 | 3 |
-| `-t, --timeout` | 超时时间(秒) | 60 |
-| `-n, --retries` | 最大批次/重试数 | 3 |
-| `-c, --check-proxy` | 预检测代理存活 | 否 |
-| `--no-save` | 不保存Cookie | 否 |
+| `-r, --rotate` | 顺序代理轮换 | 否 |
+| `-P, --parallel` | 并行 | 否 |
+| `-b, --batch` | 每批浏览器数 | 3 |
+| `-c, --check-proxy` | 预检代理 | 否 |
+| `-n, --retries` | 批次数/代理数 | 3 |
 
-### 3. Python API
+> 并行时多个窗口会争抢系统鼠标，GUI 点击可能互相干扰。
+
+### 3. nodriver `bypass_nodriver.py`
+
+```bash
+pip install "nodriver>=0.50.0" opencv-python-headless
+python bypass_nodriver.py https://example.com
+```
+
+- API：`verify_cf()`（兼容旧名 `cf_verify`）  
+- 许可：**AGPL-3.0**（闭源商用请评估）  
+- 无头模式不推荐  
+
+### 4. curl_cffi `bypass_curl_cffi.py`（非 Turnstile）
+
+```bash
+python bypass_curl_cffi.py https://example.com -f chrome146
+```
+
+仅适用于低防护 / 旧 Challenge，或**浏览器 cookie 复用**。
+
+### 5. CDP Mode `bypass_cdp.py`（2026）
+
+```bash
+python bypass_cdp.py https://example.com
+```
+
+基于 `seleniumbase.sb_cdp`：`solve_captcha()` + `gui_click_captcha()`。
+
+### 6. 类封装 `bypass_seleniumbase.py`
 
 ```python
-# 简单模式
+from bypass_seleniumbase import bypass_and_get_cookies
+
+result = bypass_and_get_cookies("https://example.com", proxy="http://127.0.0.1:7890")
+if result["success"]:
+    print(result["cf_clearance"])
+```
+
+### Python API（UC）
+
+```python
 from bypass import bypass_cloudflare
 
-result = bypass_cloudflare("https://example.com")
+result = bypass_cloudflare("https://example.com", timeout=90)
 if result["success"]:
-    print(f"cf_clearance: {result['cf_clearance']}")
-    print(f"User-Agent: {result['user_agent']}")
-
-# 完整模式
-from simple_bypass import bypass_cloudflare, bypass_parallel
-
-# 单次绕过
-result = bypass_cloudflare("https://example.com", proxy="http://127.0.0.1:7890")
-
-# 并行绕过
-result = bypass_parallel(
-    url="https://example.com",
-    proxy_file="proxy.txt",
-    batch_size=3,
-    timeout=15.0,
-    max_batches=30
-)
+    print(result["cf_clearance"])
+    print(result["user_agent"])
 ```
-
-### 4. nodriver 方案 (bypass_nodriver.py) —— CDP 直连
-
-基于 CDP 协议直连 Chrome，无需 WebDriver。nodriver 是 undetected-chromedriver 的官方继任者。支持 Turnstile。
-
-```bash
-# 安装
-pip install nodriver
-
-# 直连
-python bypass_nodriver.py https://example.com
-
-# 使用代理
-python bypass_nodriver.py https://example.com -p http://127.0.0.1:7890
-
-# 启用无头模式 (不推荐，Cloudflare可检测)
-python bypass_nodriver.py https://example.com --headless
-```
-
-**特点：** 不依赖 Selenium/WebDriver，内置 `cf_verify()` 通过 OpenCV 图像识别自动定位并点击验证复选框。异步架构，性能更优。
-
-### 5. TLS 指纹方案 (bypass_curl_cffi.py) —— 超轻量（非 Turnstile）
-
-> ⚠️ **注意：本方案无法绕过 Cloudflare Turnstile。** 仅适用于旧版 "Under Attack" JS Challenge 或低防护站点。如需绕过 Turnstile 请使用方案 1、2 或 3。
-
-在 HTTP/TLS 层仿冒真实浏览器的 JA3/JA4 指纹，无需启动浏览器。
-
-```bash
-# 安装
-pip install curl_cffi
-
-# 基础使用
-python bypass_curl_cffi.py https://example.com
-
-# 使用代理
-python bypass_curl_cffi.py https://example.com -p http://127.0.0.1:7890
-
-# 切换指纹类型 (chrome120/chrome124/chrome131/firefox121/safari17_0/edge101)
-python bypass_curl_cffi.py https://example.com -f firefox121
-```
-
-**特点：** 极速、零浏览器依赖、资源占用极低。适用于简单防护场景，不适合 Turnstile。
 
 ## 代理文件格式 / Proxy Format
 
-`proxy.txt` 每行一个代理：
+`proxy.txt` 每行一个：
 
 ```
-# 支持的格式
 127.0.0.1:7890
 http://127.0.0.1:7890
 socks5://127.0.0.1:1080
 http://user:pass@host:port
 ```
 
+公共免费代理大多不支持 HTTPS 隧道；生产请使用可靠住宅代理。
+
 ## 输出文件 / Output
 
-Cookie保存到 `output/cookies/` 目录：
+Cookie 写入 `output/cookies/`：
 
-| 文件 | 格式 | 用途 |
-|:---|:---|:---|
-| `cookies_*.json` | JSON | 编程使用 |
-| `cookies_*.txt` | Netscape | curl -b 使用 |
-
-**JSON示例：**
-```json
-{
-  "url": "https://example.com",
-  "cookies": {
-    "cf_clearance": "xxx..."
-  },
-  "user_agent": "Mozilla/5.0...",
-  "timestamp": "20260122_103000"
-}
-```
+| 前缀 | 来源 |
+|:---|:---|
+| `cookies_*.json/txt` | UC `bypass.py` / `simple_bypass.py` |
+| `cookies_cdp_*.json` | CDP |
+| `cookies_nodriver_*.json/txt` | nodriver |
+| `cookies_curl_*.json/txt` | curl_cffi |
 
 ## 项目结构 / Structure
 
 ```
 cloudflare-bypass-2026/
-├── bypass.py              # 方案1: SeleniumBase 单浏览器（主力推荐）
-├── simple_bypass.py       # 方案2: SeleniumBase 并行 + 代理轮换
-├── bypass_nodriver.py     # 方案3: nodriver CDP 直连
-├── bypass_curl_cffi.py    # 方案4: curl_cffi TLS 指纹（非Turnstile）
-├── bypass_seleniumbase.py # 详细版（类封装，含鼠标轨迹模拟）
-├── install_linux.sh       # Linux 一键安装脚本
-├── requirements.txt       # Python 依赖清单
-├── proxy.txt              # 代理列表
-├── output/                # Cookie 输出目录
+├── bypass.py                 # 方案1: SeleniumBase UC（推荐）
+├── simple_bypass.py          # 方案2: 并行 + 代理轮换
+├── bypass_nodriver.py        # 方案3: nodriver CDP
+├── bypass_curl_cffi.py       # 方案4: TLS 指纹（非 Turnstile）
+├── bypass_cdp.py             # 方案5: SeleniumBase CDP Mode
+├── bypass_seleniumbase.py    # UC 类封装详细版
+├── install_linux.sh          # Linux 安装
+├── requirements.txt
+├── proxy.txt
+├── output/                   # Cookie 输出
 └── README.md
 ```
 
 ## 常见问题 / FAQ
 
-**Q: 应该用哪个方案?**
-> 推荐优先级：bypass.py (方案1) > bypass_nodriver.py (方案3) > simple_bypass.py (方案2)。方案4 (curl_cffi) 不适用于 Turnstile，仅用于旧版简单验证。
+**Q: 应该用哪个方案？**  
+> `bypass.py` 或 `bypass_cdp.py` 优先；难站可试 `bypass_nodriver.py`；批量用 `simple_bypass.py`。Turnstile **不要**用 curl_cffi。
 
-**Q: 为什么不用无头模式?**
-> Cloudflare 可检测无头浏览器，建议保持可视化模式以获得最高成功率。
+**Q: 为什么不要无头模式？**  
+> Cloudflare 对自动化无头更敏感。Linux 无桌面请用 **Xvfb**（`install_linux.sh` / `pyvirtualdisplay` / SB `xvfb=True`），而不是真 headless。
 
-**Q: cf_clearance 有效期?**
-> 通常 30 分钟到数小时，与 Turnstile 的 Challenge Passage 设置有关。建议过期前重新获取。
+**Q: cf_clearance 多久失效？**  
+> 通常数十分钟到数小时，且常与 **IP + UA** 绑定，换代理常需重解。
 
-**Q: Linux 报错 "X11 display failed"?**
-> 运行 `sudo bash install_linux.sh` 安装 Xvfb 等依赖。
+**Q: Linux 报 X11 / display？**  
+> `sudo bash install_linux.sh` 或安装 `xvfb` + `pyvirtualdisplay`。
 
-**Q: 代理不工作?**
-> 大部分公共代理不支持 HTTPS 隧道。建议使用直连模式或购买高质量住宅代理。
+**Q: 代理不工作？**  
+> 确认支持 HTTPS CONNECT；公共代理大量失效。
 
-**Q: curl_cffi 方案为什么不能用于 Turnstile?**
-> Turnstile 需要在浏览器环境执行 JavaScript 并进行 Web API 探测（navigator、webgl、canvas 等），纯 HTTP 客户端无法完成这些操作。详见本文「方案对比」章节。
+**Q: nodriver 报 OpenCV？**  
+> `pip install opencv-python-headless`
 
-**Q: Chrome 启动多个进程?**
-> 这是 Chrome 正常架构（主进程 + 渲染进程 + GPU 进程），非代码问题。
+**Q: 有没有“最新一键通杀”？**  
+> 没有。对抗持续升级；成功率取决于目标策略、IP、浏览器环境与时机。
 
 ## 技术参考 / References
 
 - [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
-- [Cloudflare Challenges](https://developers.cloudflare.com/cloudflare-challenges/)
-- [SeleniumBase UC Mode](https://seleniumbase.com/)
-- [nodriver - undetected-chromedriver 继任者](https://github.com/ultrafunkamsterdam/nodriver)
-- [curl_cffi - TLS 指纹仿冒](https://github.com/lexiforest/curl_cffi)
+- [SeleniumBase UC Mode](https://github.com/seleniumbase/SeleniumBase/blob/master/help_docs/uc_mode.md)
+- [SeleniumBase CDP Mode](https://github.com/seleniumbase/SeleniumBase/blob/master/examples/cdp_mode/ReadMe.md)
+- [nodriver](https://github.com/ultrafunkamsterdam/nodriver)
+- [curl_cffi](https://github.com/lexiforest/curl_cffi)
 
 ---
 
@@ -325,7 +288,8 @@ cloudflare-bypass-2026/
 
 ## License
 
-MIT License
+- 本仓库代码默认按 **MIT License** 分发（见 `LICENSE`）。
+- **nodriver** 上游为 **AGPL-3.0**，使用方案 3 时请遵守其许可证。
 
 ---
 

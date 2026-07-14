@@ -349,8 +349,8 @@ def bypass_parallel(
                     try:
                         sb.uc_gui_click_captcha()
                         time.sleep(3)
-                    except:
-                        pass
+                    except Exception as click_err:
+                        print(f"[浏览器{browser_id}] 点击异常: {click_err}")
                 
                 # 获取Cookie
                 cookies_list = sb.get_cookies()
@@ -454,8 +454,8 @@ def bypass_cloudflare(
         proxy: 代理地址（可选，格式: http://host:port）
         wait_time: 等待页面加载时间（秒）
         save_cookies: 是否保存Cookie到文件
-        timeout: 早停超时时间（秒），默认15秒
-        max_retries: 最大重试次数，默认3次
+        timeout: 单次超时时间（秒），默认60秒
+        max_retries: 最大重试次数，默认1次
     
     返回:
         {
@@ -482,27 +482,33 @@ def bypass_cloudflare(
         "attempts": 0
     }
     
-    # 超时处理器
-    class TimeoutError(Exception):
+    # 超时处理器（避免遮蔽内建 TimeoutError）
+    class BypassTimeoutError(Exception):
         pass
-    
+
     def timeout_handler(signum, frame):
-        raise TimeoutError("操作超时")
-    
+        raise BypassTimeoutError("操作超时")
+
+    def _clear_alarm():
+        try:
+            if hasattr(signal, "SIGALRM"):
+                signal.alarm(0)
+        except (AttributeError, ValueError):
+            pass
+
     # 单次尝试
     def single_attempt(attempt_num: int) -> bool:
         nonlocal result
         print(f"\n[*] 第 {attempt_num}/{max_retries} 次尝试...")
-        
+
         try:
-            # 设置超时（仅Unix系统支持信号）
-            if not is_linux() or platform.system() == "Darwin":
-                # Mac/Linux 使用信号超时
+            # 设置超时（Unix: Linux/macOS 支持 SIGALRM；Windows 无此信号）
+            if hasattr(signal, "SIGALRM") and platform.system() != "Windows":
                 try:
                     signal.signal(signal.SIGALRM, timeout_handler)
                     signal.alarm(int(timeout))
                 except (AttributeError, ValueError):
-                    pass  # Windows 不支持
+                    pass
             
             with SB(uc=True, test=True, locale="en", proxy=proxy) as sb:
                 print(f"[*] 正在打开: {url}")
@@ -528,51 +534,59 @@ def bypass_cloudflare(
                 result["user_agent"] = sb.execute_script("return navigator.userAgent")
                 
                 # 取消超时
-                try:
-                    signal.alarm(0)
-                except (AttributeError, ValueError):
-                    pass
-                
+                _clear_alarm()
+
                 if result["cf_clearance"]:
                     result["success"] = True
-                    print(f"[+] 绕过成功！获取到 cf_clearance")
-                    
+                    print("[+] 绕过成功！获取到 cf_clearance")
+
                     # 保存Cookie
                     if save_cookies:
                         save_dir = Path("output/cookies")
                         save_dir.mkdir(parents=True, exist_ok=True)
                         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        
+
                         with open(save_dir / f"cookies_{ts}.json", "w", encoding="utf-8") as f:
-                            json.dump({"url": url, "cookies": result["cookies"], "user_agent": result["user_agent"]}, f, indent=2)
-                        
-                        with open(save_dir / f"cookies_{ts}.txt", "w") as f:
+                            json.dump(
+                                {
+                                    "url": url,
+                                    "cookies": result["cookies"],
+                                    "user_agent": result["user_agent"],
+                                },
+                                f,
+                                indent=2,
+                            )
+
+                        with open(save_dir / f"cookies_{ts}.txt", "w", encoding="utf-8") as f:
                             f.write("# Netscape HTTP Cookie File\n")
                             for c in cookies_list:
                                 domain = c.get("domain", "")
-                                f.write(f"{domain}\tTRUE\t{c.get('path', '/')}\t{'TRUE' if c.get('secure') else 'FALSE'}\t{int(c.get('expiry', 0))}\t{c['name']}\t{c['value']}\n")
-                        
+                                domain_flag = (
+                                    "FALSE"
+                                    if domain and not str(domain).startswith(".")
+                                    else "TRUE"
+                                )
+                                f.write(
+                                    f"{domain}\t{domain_flag}\t{c.get('path', '/')}\t"
+                                    f"{'TRUE' if c.get('secure') else 'FALSE'}\t"
+                                    f"{int(c.get('expiry', 0) or 0)}\t{c['name']}\t{c['value']}\n"
+                                )
+
                         print(f"[+] Cookie已保存到: {save_dir}")
-                    
+
                     return True
                 else:
                     print(f"[-] 未获取到 cf_clearance，Cookie数: {len(result['cookies'])}")
                     return False
-                    
-        except TimeoutError:
+
+        except BypassTimeoutError:
             print(f"[-] 超时 ({timeout}秒)")
-            try:
-                signal.alarm(0)
-            except:
-                pass
+            _clear_alarm()
             return False
         except Exception as e:
             result["error"] = str(e)
             print(f"[-] 错误: {e}")
-            try:
-                signal.alarm(0)
-            except:
-                pass
+            _clear_alarm()
             return False
     
     # 重试循环
@@ -605,7 +619,8 @@ if __name__ == "__main__":
   python simple_bypass.py https://example.com
   python simple_bypass.py https://example.com -p http://127.0.0.1:7890
   python simple_bypass.py https://example.com --proxy-file proxy.txt
-  python simple_bypass.py https://example.com -f proxy.txt --random
+  python simple_bypass.py https://example.com -f proxy.txt -r
+  python simple_bypass.py https://example.com -P -b 3 -c
         """
     )
     parser.add_argument("url", help="目标URL")
@@ -641,7 +656,8 @@ if __name__ == "__main__":
     
     # 并行模式
     if args.parallel:
-        print(f"[*] 🚀 并行模式: 每批 {args.batch} 个浏览器")
+        print(f"[*] 并行模式: 每批 {args.batch} 个浏览器")
+        print("[!] 注意: uc_gui_click_captcha 为 OS 级鼠标点击，多窗口并行可能互相干扰")
         print(f"[*] 超时: {args.timeout}秒 | 最多 {args.retries} 批")
         print(f"[*] 检测存活: {'是' if args.check_proxy else '否'}")
         
